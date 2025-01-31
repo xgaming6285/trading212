@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
   Table, 
   TableBody, 
   TableCell, 
-  TableContainer, 
   TableHead, 
   TableRow,
   Button,
@@ -20,19 +19,19 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Remove as RemoveIcon } from '@mui/icons-material';
 
-// Simulated crypto data since we don't have the actual Kraken WebSocket yet
-const MOCK_CRYPTO_DATA = {
-  'BTC': 45000,
-  'ETH': 2800,
-  'DOGE': 0.15,
-  'ADA': 1.20,
-  'SOL': 100,
-  'DOT': 18,
-  'AVAX': 80,
-  'MATIC': 2,
-  'LINK': 15,
-  'UNI': 5
-};
+// Define supported cryptocurrency pairs
+const CRYPTO_PAIRS = [
+  'BTC/USD',
+  'ETH/USD',
+  'USDT/USD',
+  'BNB/USD',
+  'SOL/USD',
+  'XRP/USD',
+  'USDC/USD',
+  'ADA/USD',
+  'AVAX/USD',
+  'DOGE/USD'
+];
 
 const CryptoList = ({ prices, setPrices, onTransaction }) => {
   const [selectedCrypto, setSelectedCrypto] = useState('');
@@ -40,44 +39,7 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
   const [transactionType, setTransactionType] = useState('buy');
   const [isLoading, setIsLoading] = useState(false);
   const [updatingPrices, setUpdatingPrices] = useState({});
-
-  // Simulate real-time price updates
-  useEffect(() => {
-    setPrices(MOCK_CRYPTO_DATA);
-    
-    const interval = setInterval(() => {
-      const updatedPrices = {};
-      Object.keys(MOCK_CRYPTO_DATA).forEach(crypto => {
-        // Random price fluctuation ±2%
-        const currentPrice = MOCK_CRYPTO_DATA[crypto];
-        const fluctuation = currentPrice * (Math.random() * 0.04 - 0.02);
-        updatedPrices[crypto] = Number((currentPrice + fluctuation).toFixed(2));
-      });
-      setPrices(updatedPrices);
-    }, 5000); // Update every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [setPrices]);
-
-  const handleBuy = (crypto) => {
-    if (!amount || isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
-    onTransaction('buy', crypto, Number(amount), prices[crypto]);
-    setAmount('');
-    setSelectedCrypto('');
-  };
-
-  const handleSell = (crypto) => {
-    if (!amount || isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
-    onTransaction('sell', crypto, Number(amount), prices[crypto]);
-    setAmount('');
-    setSelectedCrypto('');
-  };
+  const [error, setError] = useState(null);
 
   const handleTransactionClick = (crypto, type) => {
     setTransactionType(type);
@@ -104,6 +66,168 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
     return crypto; // Placeholder, actual implementation needed
   };
 
+  // Update the WebSocket connection and message handling
+  const connectWebSocket = useCallback(() => {
+    // Use the beta WebSocket endpoint
+    const ws = new WebSocket('wss://beta-ws.kraken.com');
+
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    
+    const reconnect = () => {
+      if (reconnectAttempts < maxReconnectAttempts) {
+        reconnectAttempts++;
+        console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+        setTimeout(() => {
+          connectWebSocket();
+        }, 5000 * reconnectAttempts);
+      } else {
+        setError('Unable to maintain connection to Kraken. Please refresh the page to try again.');
+      }
+    };
+
+    ws.onopen = () => {
+      console.log('Connected to Kraken WebSocket');
+      reconnectAttempts = 0;
+      
+      // Subscribe using the newer format
+      const subscribeMsg = {
+        event: 'subscribe',
+        pair: CRYPTO_PAIRS,
+        subscription: {
+          name: 'ticker'
+        }
+      };
+      
+      console.log('Sending subscribe message:', subscribeMsg);
+      ws.send(JSON.stringify(subscribeMsg));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('Received message:', data);
+      
+      // Handle heartbeat
+      if (data.event === 'heartbeat') {
+        return;
+      }
+
+      // Handle subscription status
+      if (data.event === 'subscriptionStatus') {
+        console.log('Subscription status:', data);
+        return;
+      }
+
+      // Handle ticker data (array format)
+      if (Array.isArray(data) && data[2] === 'ticker') {
+        const pair = data[3];
+        const tickerData = data[1];
+        
+        if (tickerData && tickerData.c) {
+          const price = parseFloat(tickerData.c[0]);
+          
+          if (!isNaN(price)) {
+            console.log(`Updating price for ${pair}: ${price}`);
+            setPrices(prev => ({
+              ...prev,
+              [pair]: price
+            }));
+            
+            setUpdatingPrices(prev => ({
+              ...prev,
+              [pair]: true
+            }));
+            setTimeout(() => {
+              setUpdatingPrices(prev => ({
+                ...prev,
+                [pair]: false
+              }));
+            }, 500);
+          }
+        }
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setError('Connection error occurred. Attempting to reconnect...');
+      reconnect();
+    };
+
+    ws.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
+      
+      if (event.code !== 1000) {
+        setError('Connection closed unexpectedly. Attempting to reconnect...');
+        reconnect();
+      }
+    };
+
+    return ws;
+  }, [setPrices]);
+
+  // Update the initial price fetching
+  const fetchInitialPrices = useCallback(async () => {
+    try {
+      // Use the newer API endpoint
+      const response = await fetch('https://api.kraken.com/0/public/Ticker', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error && data.error.length > 0) {
+        throw new Error(`Kraken API error: ${data.error.join(', ')}`);
+      }
+      
+      // Set some initial default prices while waiting for WebSocket
+      const defaultPrices = {
+        'BTC/USD': 45000,
+        'ETH/USD': 2500,
+        'USDT/USD': 1,
+        'BNB/USD': 300,
+        'SOL/USD': 100,
+        'XRP/USD': 0.5,
+        'USDC/USD': 1,
+        'ADA/USD': 0.5,
+        'AVAX/USD': 35,
+        'DOGE/USD': 0.1
+      };
+      
+      console.log('Setting default prices:', defaultPrices);
+      setPrices(defaultPrices);
+      
+    } catch (error) {
+      console.error('Error fetching initial prices:', error);
+      if (error.message === 'Failed to fetch') {
+        setError('Unable to connect to Kraken API. Please check your internet connection or try again later.');
+      } else {
+        setError(`Failed to fetch prices: ${error.message}`);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setPrices]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    const ws = connectWebSocket();
+    fetchInitialPrices();
+
+    return () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, 'Component unmounting');
+      }
+    };
+  }, [connectWebSocket, fetchInitialPrices, setPrices]);
+
   return (
     <Box sx={{ p: 2 }}>
       <Typography variant="h6" gutterBottom>
@@ -119,7 +243,15 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {isLoading ? (
+          {error ? (
+            <TableRow>
+              <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                <Alert severity="error">
+                  {error}
+                </Alert>
+              </TableCell>
+            </TableRow>
+          ) : isLoading ? (
             <TableRow>
               <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
                 <CircularProgress size={24} sx={{ mr: 2 }} />
