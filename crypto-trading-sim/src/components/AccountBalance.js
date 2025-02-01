@@ -7,7 +7,7 @@ import {
   ListItem, 
   ListItemText,
   Box,
-  Grid
+  Grid,
 } from '@mui/material';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 
@@ -40,7 +40,7 @@ const AccountBalance = ({ balance, holdings, prices, onReset }) => {
       
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, bgcolor: '#f8f9fa' }}>
+          <Paper sx={{ p: 2, bgcolor: 'background.paper' }}>
             <Typography variant="subtitle2" color="textSecondary">
               Cash Balance
             </Typography>
@@ -51,7 +51,7 @@ const AccountBalance = ({ balance, holdings, prices, onReset }) => {
         </Grid>
         
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, bgcolor: '#f8f9fa' }}>
+          <Paper sx={{ p: 2, bgcolor: 'background.paper' }}>
             <Typography variant="subtitle2" color="textSecondary">
               Holdings Value
             </Typography>
@@ -62,7 +62,7 @@ const AccountBalance = ({ balance, holdings, prices, onReset }) => {
         </Grid>
         
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, bgcolor: '#f8f9fa' }}>
+          <Paper sx={{ p: 2, bgcolor: 'background.paper' }}>
             <Typography variant="subtitle2" color="textSecondary">
               Total Value
             </Typography>

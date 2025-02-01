@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import './App.css';
 import CryptoList from './components/CryptoList';
 import AccountBalance from './components/AccountBalance';
 import TransactionHistory from './components/TransactionHistory';
-import { Container, Grid, Paper, Typography, Box } from '@mui/material';
+import ThemeSwitch from './components/ThemeSwitch';
+import { Container, Grid, Paper, Typography, Box, createTheme, ThemeProvider, CssBaseline } from '@mui/material';
 
 const INITIAL_BALANCE = 10000;
 
@@ -13,6 +14,21 @@ function App() {
   const [transactions, setTransactions] = useState([]);
   const [cryptoPrices, setCryptoPrices] = useState({});
   const [resetTrigger, setResetTrigger] = useState(false);
+  const [mode, setMode] = useState('light');
+
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: {
+          mode,
+        },
+      }),
+    [mode],
+  );
+
+  const toggleTheme = () => {
+    setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+  };
 
   const handleSetPrices = useCallback((prices) => {
     setCryptoPrices(prices);
@@ -86,19 +102,15 @@ function App() {
   };
 
   return (
-    <>
-      <Box sx={{ bgcolor: '#1976d2', color: 'white', py: 2, mb: 3 }}>
-        <Container>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" component="h1">
             Crypto Trading Simulator
           </Typography>
-          <Typography variant="subtitle1">
-            Practice trading with $10,000 virtual currency
-          </Typography>
-        </Container>
-      </Box>
-
-      <Container className="App">
+          <ThemeSwitch toggleTheme={toggleTheme} />
+        </Box>
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <AccountBalance 
@@ -128,7 +140,7 @@ function App() {
           </Grid>
         </Grid>
       </Container>
-    </>
+    </ThemeProvider>
   );
 }
 

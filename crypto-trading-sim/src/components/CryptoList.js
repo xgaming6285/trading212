@@ -443,105 +443,107 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
         </Tooltip>
       </Box>
       
-      <Table>
-        <TableHead>
-          <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-            <TableCell>Cryptocurrency</TableCell>
-            <TableCell align="right">Price (USD)</TableCell>
-            <TableCell align="center">Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {error ? (
+      <Box sx={{ width: '100%', overflow: 'auto' }}>
+        <Table>
+          <TableHead>
             <TableRow>
-              <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                <Alert severity="error">
-                  {error}
-                </Alert>
-              </TableCell>
+              <TableCell sx={{ bgcolor: 'background.paper', fontWeight: 'bold' }}>Cryptocurrency</TableCell>
+              <TableCell sx={{ bgcolor: 'background.paper', fontWeight: 'bold' }}>Price (USD)</TableCell>
+              <TableCell sx={{ bgcolor: 'background.paper', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
-          ) : isLoading ? (
-            <TableRow>
-              <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                <CircularProgress size={24} sx={{ mr: 2 }} />
-                Loading cryptocurrency prices...
-              </TableCell>
-            </TableRow>
-          ) : Object.entries(prices).length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                <Alert severity="warning">
-                  No cryptocurrency data available. Please check your connection.
-                </Alert>
-              </TableCell>
-            </TableRow>
-          ) : (
-            Object.entries(prices)
-              .filter(([crypto]) => allPairs.includes(crypto))
-              .sort(([, priceA], [, priceB]) => priceB - priceA) // Sort by price in descending order
-              .map(([crypto, price]) => {
-                const displayCrypto = DISPLAY_MAPPING[crypto] || crypto;
-                return (
-                  <TableRow 
-                    key={crypto}
-                    sx={{
-                      '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' },
-                      transition: 'background-color 0.2s'
-                    }}
-                  >
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {getCryptoIcon(displayCrypto)}
-                        <Box sx={{ ml: 1 }}>
-                          <Typography>{getCryptoFullName(displayCrypto)}</Typography>
-                          <Typography variant="caption" color="textSecondary">
-                            {displayCrypto}
-                          </Typography>
+          </TableHead>
+          <TableBody>
+            {error ? (
+              <TableRow>
+                <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                  <Alert severity="error">
+                    {error}
+                  </Alert>
+                </TableCell>
+              </TableRow>
+            ) : isLoading ? (
+              <TableRow>
+                <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                  <CircularProgress size={24} sx={{ mr: 2 }} />
+                  Loading cryptocurrency prices...
+                </TableCell>
+              </TableRow>
+            ) : Object.entries(prices).length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                  <Alert severity="warning">
+                    No cryptocurrency data available. Please check your connection.
+                  </Alert>
+                </TableCell>
+              </TableRow>
+            ) : (
+              Object.entries(prices)
+                .filter(([crypto]) => allPairs.includes(crypto))
+                .sort(([, priceA], [, priceB]) => priceB - priceA) // Sort by price in descending order
+                .map(([crypto, price]) => {
+                  const displayCrypto = DISPLAY_MAPPING[crypto] || crypto;
+                  return (
+                    <TableRow 
+                      key={crypto}
+                      sx={{
+                        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' },
+                        transition: 'background-color 0.2s'
+                      }}
+                    >
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {getCryptoIcon(displayCrypto)}
+                          <Box sx={{ ml: 1 }}>
+                            <Typography>{getCryptoFullName(displayCrypto)}</Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              {displayCrypto}
+                            </Typography>
+                          </Box>
                         </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell align="right" sx={{
-                      backgroundColor: updatingPrices[crypto] ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                      transition: 'background-color 0.5s'
-                    }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                        <Typography sx={{ 
-                          fontFamily: 'monospace',
-                          color: realTimeData[crypto] ? 'success.main' : 'text.secondary'
-                        }}>
-                          ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </Typography>
-                        {!realTimeData[crypto] && (
-                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                            (Demo)
+                      </TableCell>
+                      <TableCell align="right" sx={{
+                        backgroundColor: updatingPrices[crypto] ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                        transition: 'background-color 0.5s'
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          <Typography sx={{ 
+                            fontFamily: 'monospace',
+                            color: realTimeData[crypto] ? 'success.main' : 'text.secondary'
+                          }}>
+                            ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </Typography>
-                        )}
-                      </Box>
-                    </TableCell>
-                    <TableCell align="center">
-                      <ButtonGroup size="small" variant="outlined">
-                        <Button 
-                          onClick={() => handleTransactionClick(crypto, 'buy')}
-                          color="primary"
-                          startIcon={<AddIcon />}
-                        >
-                          Buy
-                        </Button>
-                        <Button 
-                          onClick={() => handleTransactionClick(crypto, 'sell')}
-                          color="secondary"
-                          startIcon={<RemoveIcon />}
-                        >
-                          Sell
-                        </Button>
-                      </ButtonGroup>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-          )}
-        </TableBody>
-      </Table>
+                          {!realTimeData[crypto] && (
+                            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                              (Demo)
+                            </Typography>
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">
+                        <ButtonGroup size="small" variant="outlined">
+                          <Button 
+                            onClick={() => handleTransactionClick(crypto, 'buy')}
+                            color="primary"
+                            startIcon={<AddIcon />}
+                          >
+                            Buy
+                          </Button>
+                          <Button 
+                            onClick={() => handleTransactionClick(crypto, 'sell')}
+                            color="secondary"
+                            startIcon={<RemoveIcon />}
+                          >
+                            Sell
+                          </Button>
+                        </ButtonGroup>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+            )}
+          </TableBody>
+        </Table>
+      </Box>
 
       <Dialog 
         open={!!selectedCrypto} 
