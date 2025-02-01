@@ -317,21 +317,30 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
         throw new Error(data.error.join(', '));
       }
 
-      // Extract and format pairs
-      const pairs = Object.entries(data.result).map(([_, info]) => ({
-        wsname: info.wsname,
-        name: info.altname,
-        base: info.base,
-        quote: info.quote,
-        displayName: `${info.base}/${info.quote}`
-      }));
+      // Extract and format pairs from the API response
+      const pairs = Object.entries(data.result)
+        .filter(([_, info]) => info.status === 'online') // Only include online pairs
+        .map(([_, info]) => ({
+          wsname: info.wsname || `${info.base}/${info.quote}`, // Use wsname if available, otherwise construct from base/quote
+          name: info.altname,
+          base: info.base,
+          quote: info.quote,
+          displayName: info.wsname || `${info.base}/${info.quote}`, // Use wsname for display if available
+          status: info.status,
+          ordermin: info.ordermin,
+          costmin: info.costmin,
+          pairDecimals: info.pair_decimals,
+          lotDecimals: info.lot_decimals
+        }))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)); // Sort alphabetically
 
+      console.log(`Loaded ${pairs.length} trading pairs from Kraken`);
       setAvailablePairs(pairs);
     } catch (error) {
       console.error('Error fetching pairs:', error);
       setNotification({
         open: true,
-        message: 'Failed to fetch available pairs',
+        message: 'Failed to fetch available pairs: ' + error.message,
         severity: 'error'
       });
     } finally {
@@ -608,11 +617,26 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
                   <TextField
                     {...params}
                     label="Trading Pair"
-                    helperText="Search and select a trading pair"
+                    helperText={`${availablePairs.length} pairs available. Type to search (e.g., BTC/USD, ETH/EUR)`}
                     fullWidth
                     autoFocus
                   />
                 )}
+                renderOption={(props, option) => {
+                  const pair = availablePairs.find(p => p.displayName === option);
+                  return (
+                    <li {...props}>
+                      <Box>
+                        <Typography variant="body1">
+                          {pair.displayName}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Min Order: {pair.ordermin} {pair.base} • Min Cost: {pair.costmin} {pair.quote}
+                        </Typography>
+                      </Box>
+                    </li>
+                  );
+                }}
                 filterOptions={(options, { inputValue }) => {
                   const input = (inputValue || '').toUpperCase();
                   return options.filter(option => 
@@ -623,6 +647,9 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
                 selectOnFocus
                 clearOnBlur
                 handleHomeEndKeys
+                ListboxProps={{
+                  style: { maxHeight: '50vh' }
+                }}
               />
             )}
           </Box>
