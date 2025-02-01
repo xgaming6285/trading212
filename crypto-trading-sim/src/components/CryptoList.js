@@ -63,11 +63,9 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
   const [realTimeData, setRealTimeData] = useState({});
   const [customPairs, setCustomPairs] = useState([]);
   const [addPairDialogOpen, setAddPairDialogOpen] = useState(false);
-  const [newPair, setNewPair] = useState('');
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
   const [availablePairs, setAvailablePairs] = useState([]);
   const [loadingPairs, setLoadingPairs] = useState(false);
-  const [pairSuggestions, setPairSuggestions] = useState([]);
   const [searchInput, setSearchInput] = useState('');
 
   // Move allPairs declaration here, before it's used
@@ -255,7 +253,7 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
     };
 
     return ws;
-  }, [customPairs]); // Only depend on customPairs since CRYPTO_PAIRS is constant
+  }, [customPairs, setPrices]); // Add setPrices to dependency array
 
   // Update the initial price fetching
   const fetchInitialPrices = useCallback(async () => {
@@ -480,6 +478,7 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
           ) : (
             Object.entries(prices)
               .filter(([crypto]) => allPairs.includes(crypto))
+              .sort(([, priceA], [, priceB]) => priceB - priceA) // Sort by price in descending order
               .map(([crypto, price]) => {
                 const displayCrypto = DISPLAY_MAPPING[crypto] || crypto;
                 return (
