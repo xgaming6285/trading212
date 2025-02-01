@@ -15,9 +15,19 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  ButtonGroup
+  ButtonGroup,
+  Snackbar,
+  IconButton,
+  Tooltip,
+  Autocomplete
 } from '@mui/material';
-import { Add as AddIcon, Remove as RemoveIcon, CurrencyBitcoin as BitcoinIcon, CurrencyExchange as GenericCryptoIcon } from '@mui/icons-material';
+import { 
+  Add as AddIcon, 
+  Remove as RemoveIcon, 
+  CurrencyBitcoin as BitcoinIcon, 
+  CurrencyExchange as GenericCryptoIcon,
+  AddCircleOutline as AddPairIcon 
+} from '@mui/icons-material';
 
 // Define supported cryptocurrency pairs
 const CRYPTO_PAIRS = [
@@ -43,7 +53,7 @@ const DISPLAY_MAPPING = {
   // Add other mappings if needed
 };
 
-const CryptoList = ({ prices, setPrices, onTransaction }) => {
+const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
   const [selectedCrypto, setSelectedCrypto] = useState('');
   const [amount, setAmount] = useState('');
   const [transactionType, setTransactionType] = useState('buy');
@@ -51,6 +61,17 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
   const [updatingPrices, setUpdatingPrices] = useState({});
   const [error, setError] = useState(null);
   const [realTimeData, setRealTimeData] = useState({});
+  const [customPairs, setCustomPairs] = useState([]);
+  const [addPairDialogOpen, setAddPairDialogOpen] = useState(false);
+  const [newPair, setNewPair] = useState('');
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
+  const [availablePairs, setAvailablePairs] = useState([]);
+  const [loadingPairs, setLoadingPairs] = useState(false);
+  const [pairSuggestions, setPairSuggestions] = useState([]);
+  const [searchInput, setSearchInput] = useState('');
+
+  // Move allPairs declaration here, before it's used
+  const allPairs = [...CRYPTO_PAIRS, ...customPairs];
 
   const handleTransactionClick = (crypto, type) => {
     setTransactionType(type);
@@ -133,7 +154,6 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
 
   // Update the WebSocket connection and message handling
   const connectWebSocket = useCallback(() => {
-    // Use the beta WebSocket endpoint
     const ws = new WebSocket('wss://beta-ws.kraken.com');
 
     let reconnectAttempts = 0;
@@ -155,10 +175,10 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
       console.log('Connected to Kraken WebSocket');
       reconnectAttempts = 0;
       
-      // Subscribe using the newer format
+      // Use the current value of allPairs from closure
       const subscribeMsg = {
         event: 'subscribe',
-        pair: CRYPTO_PAIRS,
+        pair: [...CRYPTO_PAIRS, ...customPairs], // Use the arrays directly instead of allPairs
         subscription: {
           name: 'ticker'
         }
@@ -235,7 +255,7 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
     };
 
     return ws;
-  }, [setPrices]);
+  }, [customPairs]); // Only depend on customPairs since CRYPTO_PAIRS is constant
 
   // Update the initial price fetching
   const fetchInitialPrices = useCallback(async () => {
@@ -287,6 +307,92 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
     }
   }, [setPrices]);
 
+  const fetchAvailablePairs = useCallback(async () => {
+    setLoadingPairs(true);
+    try {
+      const response = await fetch('https://api.kraken.com/0/public/AssetPairs');
+      const data = await response.json();
+      
+      if (data.error && data.error.length > 0) {
+        throw new Error(data.error.join(', '));
+      }
+
+      // Extract and format pairs
+      const pairs = Object.entries(data.result).map(([_, info]) => ({
+        wsname: info.wsname,
+        name: info.altname,
+        base: info.base,
+        quote: info.quote,
+        displayName: `${info.base}/${info.quote}`
+      }));
+
+      setAvailablePairs(pairs);
+    } catch (error) {
+      console.error('Error fetching pairs:', error);
+      setNotification({
+        open: true,
+        message: 'Failed to fetch available pairs',
+        severity: 'error'
+      });
+    } finally {
+      setLoadingPairs(false);
+    }
+  }, []);
+
+  const handleAddPair = async () => {
+    if (!searchInput) {
+      setNotification({
+        open: true,
+        message: 'Please select a valid trading pair',
+        severity: 'error'
+      });
+      return;
+    }
+
+    try {
+      const selectedPair = availablePairs.find(p => p.displayName === searchInput);
+      if (!selectedPair) {
+        throw new Error('Invalid trading pair selected');
+      }
+
+      const standardizedPair = selectedPair.wsname;
+      if (!CRYPTO_PAIRS.includes(standardizedPair) && !customPairs.includes(standardizedPair)) {
+        setCustomPairs(prev => [...prev, standardizedPair]);
+        setNotification({
+          open: true,
+          message: `Successfully added ${standardizedPair}`,
+          severity: 'success'
+        });
+      } else {
+        setNotification({
+          open: true,
+          message: 'This pair is already in the list',
+          severity: 'warning'
+        });
+      }
+      
+      setAddPairDialogOpen(false);
+      setSearchInput('');
+      
+    } catch (error) {
+      setNotification({
+        open: true,
+        message: error.message || 'Failed to add trading pair',
+        severity: 'error'
+      });
+    }
+  };
+
+  // Modify the WebSocket subscription to include custom pairs
+  useEffect(() => {
+    const ws = connectWebSocket();
+    return () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, 'Component unmounting');
+      }
+    };
+  }, [connectWebSocket]);
+
   useEffect(() => {
     setIsLoading(true);
     const ws = connectWebSocket();
@@ -299,11 +405,36 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
     };
   }, [connectWebSocket, fetchInitialPrices, setPrices]);
 
+  // Add effect to clear custom pairs when account is reset
+  useEffect(() => {
+    if (onReset) {
+      setCustomPairs([]);
+    }
+  }, [onReset]);
+
+  // Add effect to fetch pairs when dialog opens
+  useEffect(() => {
+    if (addPairDialogOpen && availablePairs.length === 0) {
+      fetchAvailablePairs();
+    }
+  }, [addPairDialogOpen, availablePairs.length, fetchAvailablePairs]);
+
   return (
     <Box sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Cryptocurrency Prices
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">
+          Cryptocurrency Prices
+        </Typography>
+        <Tooltip title="Add new trading pair">
+          <IconButton 
+            color="primary" 
+            onClick={() => setAddPairDialogOpen(true)}
+            sx={{ ml: 1 }}
+          >
+            <AddPairIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
       
       <Table>
         <TableHead>
@@ -338,66 +469,68 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
               </TableCell>
             </TableRow>
           ) : (
-            Object.entries(prices).map(([crypto, price]) => {
-              const displayCrypto = DISPLAY_MAPPING[crypto] || crypto;
-              return (
-                <TableRow 
-                  key={crypto}
-                  sx={{
-                    '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' },
-                    transition: 'background-color 0.2s'
-                  }}
-                >
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      {getCryptoIcon(displayCrypto)}
-                      <Box sx={{ ml: 1 }}>
-                        <Typography>{getCryptoFullName(displayCrypto)}</Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          {displayCrypto}
-                        </Typography>
+            Object.entries(prices)
+              .filter(([crypto]) => allPairs.includes(crypto))
+              .map(([crypto, price]) => {
+                const displayCrypto = DISPLAY_MAPPING[crypto] || crypto;
+                return (
+                  <TableRow 
+                    key={crypto}
+                    sx={{
+                      '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' },
+                      transition: 'background-color 0.2s'
+                    }}
+                  >
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {getCryptoIcon(displayCrypto)}
+                        <Box sx={{ ml: 1 }}>
+                          <Typography>{getCryptoFullName(displayCrypto)}</Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            {displayCrypto}
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell align="right" sx={{
-                    backgroundColor: updatingPrices[crypto] ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                    transition: 'background-color 0.5s'
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                      <Typography sx={{ 
-                        fontFamily: 'monospace',
-                        color: realTimeData[crypto] ? 'success.main' : 'text.secondary'
-                      }}>
-                        ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Typography>
-                      {!realTimeData[crypto] && (
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                          (Demo)
+                    </TableCell>
+                    <TableCell align="right" sx={{
+                      backgroundColor: updatingPrices[crypto] ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                      transition: 'background-color 0.5s'
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                        <Typography sx={{ 
+                          fontFamily: 'monospace',
+                          color: realTimeData[crypto] ? 'success.main' : 'text.secondary'
+                        }}>
+                          ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell align="center">
-                    <ButtonGroup size="small" variant="outlined">
-                      <Button 
-                        onClick={() => handleTransactionClick(crypto, 'buy')}
-                        color="primary"
-                        startIcon={<AddIcon />}
-                      >
-                        Buy
-                      </Button>
-                      <Button 
-                        onClick={() => handleTransactionClick(crypto, 'sell')}
-                        color="secondary"
-                        startIcon={<RemoveIcon />}
-                      >
-                        Sell
-                      </Button>
-                    </ButtonGroup>
-                  </TableCell>
-                </TableRow>
-              );
-            })
+                        {!realTimeData[crypto] && (
+                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            (Demo)
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell align="center">
+                      <ButtonGroup size="small" variant="outlined">
+                        <Button 
+                          onClick={() => handleTransactionClick(crypto, 'buy')}
+                          color="primary"
+                          startIcon={<AddIcon />}
+                        >
+                          Buy
+                        </Button>
+                        <Button 
+                          onClick={() => handleTransactionClick(crypto, 'sell')}
+                          color="secondary"
+                          startIcon={<RemoveIcon />}
+                        >
+                          Sell
+                        </Button>
+                      </ButtonGroup>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
           )}
         </TableBody>
       </Table>
@@ -448,6 +581,84 @@ const CryptoList = ({ prices, setPrices, onTransaction }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Update the Add New Pair Dialog */}
+      <Dialog 
+        open={addPairDialogOpen} 
+        onClose={() => setAddPairDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Add New Trading Pair</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            {loadingPairs ? (
+              <Box display="flex" justifyContent="center" p={2}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : (
+              <Autocomplete
+                fullWidth
+                value={searchInput}
+                onChange={(_, newValue) => setSearchInput(newValue || '')}
+                inputValue={searchInput}
+                onInputChange={(_, newInputValue) => setSearchInput(newInputValue || '')}
+                options={availablePairs.map(pair => pair.displayName)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Trading Pair"
+                    helperText="Search and select a trading pair"
+                    fullWidth
+                    autoFocus
+                  />
+                )}
+                filterOptions={(options, { inputValue }) => {
+                  const input = (inputValue || '').toUpperCase();
+                  return options.filter(option => 
+                    option.toUpperCase().includes(input)
+                  );
+                }}
+                freeSolo={false}
+                selectOnFocus
+                clearOnBlur
+                handleHomeEndKeys
+              />
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setAddPairDialogOpen(false);
+            setSearchInput('');
+          }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleAddPair}
+            variant="contained"
+            color="primary"
+            disabled={loadingPairs || !searchInput}
+          >
+            Add Pair
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Notification Snackbar */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={() => setNotification({ ...notification, open: false })}
+      >
+        <Alert 
+          onClose={() => setNotification({ ...notification, open: false })} 
+          severity={notification.severity}
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

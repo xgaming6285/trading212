@@ -12,6 +12,7 @@ function App() {
   const [holdings, setHoldings] = useState({});
   const [transactions, setTransactions] = useState([]);
   const [cryptoPrices, setCryptoPrices] = useState({});
+  const [resetTrigger, setResetTrigger] = useState(false);
 
   const handleSetPrices = useCallback((prices) => {
     setCryptoPrices(prices);
@@ -81,6 +82,7 @@ function App() {
     setBalance(INITIAL_BALANCE);
     setHoldings({});
     setTransactions([]);
+    setResetTrigger(prev => !prev);
   };
 
   return (
@@ -112,6 +114,7 @@ function App() {
                 prices={cryptoPrices} 
                 setPrices={handleSetPrices}
                 onTransaction={handleTransaction}
+                onReset={resetTrigger}
               />
             </Paper>
           </Grid>
