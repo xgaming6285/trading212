@@ -1,10 +1,25 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import './App.css';
 import CryptoList from './components/CryptoList';
 import AccountBalance from './components/AccountBalance';
 import TransactionHistory from './components/TransactionHistory';
 import ThemeSwitch from './components/ThemeSwitch';
-import { Container, Grid, Paper, Typography, Box, createTheme, ThemeProvider, CssBaseline } from '@mui/material';
+import { 
+  Container, 
+  Grid, 
+  Paper, 
+  Typography, 
+  Box, 
+  createTheme, 
+  ThemeProvider, 
+  CssBaseline,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Divider
+} from '@mui/material';
 
 const INITIAL_BALANCE = 10000;
 
@@ -15,6 +30,9 @@ function App() {
   const [cryptoPrices, setCryptoPrices] = useState({});
   const [resetTrigger, setResetTrigger] = useState(false);
   const [mode, setMode] = useState('light');
+  const [showWelcome, setShowWelcome] = useState(() => {
+    return !localStorage.getItem('welcomeShown');
+  });
 
   const theme = useMemo(
     () =>
@@ -101,27 +119,41 @@ function App() {
     setResetTrigger(prev => !prev);
   };
 
+  useEffect(() => {
+    if (showWelcome) {
+      localStorage.setItem('welcomeShown', 'true');
+    }
+  }, [showWelcome]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1">
-            Crypto Trading Simulator
-          </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+          <Box>
+            <Typography variant="h3" component="h1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              Crypto Trading Simulator
+            </Typography>
+            <Typography variant="subtitle1" color="text.secondary">
+              Practice trading with virtual money in a risk-free environment
+            </Typography>
+          </Box>
           <ThemeSwitch toggleTheme={toggleTheme} />
         </Box>
-        <Grid container spacing={3}>
+        <Divider sx={{ mb: 4 }} />
+        <Grid container spacing={4}>
           <Grid item xs={12}>
-            <AccountBalance 
-              balance={balance} 
-              holdings={holdings} 
-              prices={cryptoPrices}
-              onReset={handleReset}
-            />
+            <Paper elevation={3} sx={{ p: 3 }}>
+              <AccountBalance 
+                balance={balance} 
+                holdings={holdings} 
+                prices={cryptoPrices}
+                onReset={handleReset}
+              />
+            </Paper>
           </Grid>
           <Grid item xs={12} md={8}>
-            <Paper>
+            <Paper elevation={3}>
               <CryptoList 
                 prices={cryptoPrices} 
                 setPrices={handleSetPrices}
@@ -131,7 +163,7 @@ function App() {
             </Paper>
           </Grid>
           <Grid item xs={12} md={4}>
-            <Paper>
+            <Paper elevation={3}>
               <TransactionHistory 
                 transactions={transactions}
                 currentPrices={cryptoPrices}
@@ -139,6 +171,36 @@ function App() {
             </Paper>
           </Grid>
         </Grid>
+
+        <Dialog open={showWelcome} onClose={() => setShowWelcome(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            <Typography variant="h5" component="div">
+              Welcome to Crypto Trading Simulator! 👋
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            <Typography paragraph sx={{ mt: 2 }}>
+              This simulator allows you to practice cryptocurrency trading without risking real money. Here's how to get started:
+            </Typography>
+            <Typography component="div" sx={{ mb: 2 }}>
+              <ul>
+                <li>You start with ${INITIAL_BALANCE.toLocaleString()} in virtual money</li>
+                <li>View real-time cryptocurrency prices</li>
+                <li>Buy and sell various cryptocurrencies</li>
+                <li>Track your portfolio performance</li>
+                <li>View your transaction history</li>
+              </ul>
+            </Typography>
+            <Typography>
+              Remember: This is a simulator for learning purposes. No real money is involved!
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowWelcome(false)} variant="contained" color="primary">
+              Get Started
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </ThemeProvider>
   );

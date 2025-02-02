@@ -19,14 +19,21 @@ import {
   Snackbar,
   IconButton,
   Tooltip,
-  Autocomplete
+  Autocomplete,
+  Fade,
+  InputAdornment
 } from '@mui/material';
 import { 
   Add as AddIcon, 
   Remove as RemoveIcon, 
   CurrencyBitcoin as BitcoinIcon, 
   CurrencyExchange as GenericCryptoIcon,
-  AddCircleOutline as AddPairIcon 
+  AddCircleOutline as AddPairIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  Info as InfoIcon,
+  Sort as SortIcon,
+  SortByAlpha as SortByAlphaIcon
 } from '@mui/icons-material';
 
 // Define supported cryptocurrency pairs
@@ -57,16 +64,18 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
   const [selectedCrypto, setSelectedCrypto] = useState('');
   const [amount, setAmount] = useState('');
   const [transactionType, setTransactionType] = useState('buy');
-  const [isLoading, setIsLoading] = useState(false);
   const [updatingPrices, setUpdatingPrices] = useState({});
   const [error, setError] = useState(null);
-  const [realTimeData, setRealTimeData] = useState({});
   const [customPairs, setCustomPairs] = useState([]);
   const [addPairDialogOpen, setAddPairDialogOpen] = useState(false);
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
   const [availablePairs, setAvailablePairs] = useState([]);
   const [loadingPairs, setLoadingPairs] = useState(false);
   const [searchInput, setSearchInput] = useState('');
+  const [previousPrices, setPreviousPrices] = useState({});
+  const [priceChanges, setPriceChanges] = useState({});
+  const [sortType, setSortType] = useState('none'); // 'none', 'value', 'alpha'
+  const [sortDirection, setSortDirection] = useState('asc');
 
   // Move allPairs declaration here, before it's used
   const allPairs = [...CRYPTO_PAIRS, ...customPairs];
@@ -176,7 +185,7 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
       // Use the current value of allPairs from closure
       const subscribeMsg = {
         event: 'subscribe',
-        pair: [...CRYPTO_PAIRS, ...customPairs], // Use the arrays directly instead of allPairs
+        pair: [...CRYPTO_PAIRS, ...customPairs], 
         subscription: {
           name: 'ticker'
         }
@@ -217,7 +226,7 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
             }));
             
             // Mark this price as real-time data
-            setRealTimeData(prev => ({
+            setUpdatingPrices(prev => ({
               ...prev,
               [krakenPair]: true
             }));
@@ -300,8 +309,6 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
       } else {
         setError(`Failed to fetch prices: ${error.message}`);
       }
-    } finally {
-      setIsLoading(false);
     }
   }, [setPrices]);
 
@@ -401,16 +408,8 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
   }, [connectWebSocket]);
 
   useEffect(() => {
-    setIsLoading(true);
-    const ws = connectWebSocket();
     fetchInitialPrices();
-
-    return () => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close(1000, 'Component unmounting');
-      }
-    };
-  }, [connectWebSocket, fetchInitialPrices, setPrices]);
+  }, [fetchInitialPrices]);
 
   // Add effect to clear custom pairs when account is reset
   useEffect(() => {
@@ -426,168 +425,231 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
     }
   }, [addPairDialogOpen, availablePairs.length, fetchAvailablePairs]);
 
-  return (
-    <Box sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">
-          Cryptocurrency Prices
+  useEffect(() => {
+    Object.entries(prices).forEach(([pair, price]) => {
+      const prevPrice = previousPrices[pair];
+      if (prevPrice && price !== prevPrice) {
+        setPriceChanges(prev => ({
+          ...prev,
+          [pair]: {
+            direction: price > prevPrice ? 'up' : 'down',
+            percentage: ((price - prevPrice) / prevPrice * 100).toFixed(2)
+          }
+        }));
+      }
+      setPreviousPrices(prev => ({
+        ...prev,
+        [pair]: price
+      }));
+    });
+  }, [prices, previousPrices]);
+
+  const renderPriceChange = (pair) => {
+    const change = priceChanges[pair];
+    if (!change) return null;
+
+    const color = change.direction === 'up' ? 'success.main' : 'error.main';
+    const Icon = change.direction === 'up' ? TrendingUpIcon : TrendingDownIcon;
+
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Icon sx={{ color }} />
+        <Typography variant="body2" sx={{ color }}>
+          {change.direction === 'up' ? '+' : ''}{change.percentage}%
         </Typography>
-        <Tooltip title="Add new trading pair">
-          <IconButton 
-            color="primary" 
-            onClick={() => setAddPairDialogOpen(true)}
-            sx={{ ml: 1 }}
-          >
-            <AddPairIcon />
-          </IconButton>
-        </Tooltip>
       </Box>
-      
-      <Box sx={{ width: '100%', overflow: 'auto' }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ bgcolor: 'background.paper', fontWeight: 'bold' }}>Cryptocurrency</TableCell>
-              <TableCell sx={{ bgcolor: 'background.paper', fontWeight: 'bold' }}>Price (USD)</TableCell>
-              <TableCell sx={{ bgcolor: 'background.paper', fontWeight: 'bold' }}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {error ? (
-              <TableRow>
-                <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                  <Alert severity="error">
-                    {error}
-                  </Alert>
-                </TableCell>
-              </TableRow>
-            ) : isLoading ? (
-              <TableRow>
-                <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                  <CircularProgress size={24} sx={{ mr: 2 }} />
-                  Loading cryptocurrency prices...
-                </TableCell>
-              </TableRow>
-            ) : Object.entries(prices).length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                  <Alert severity="warning">
-                    No cryptocurrency data available. Please check your connection.
-                  </Alert>
-                </TableCell>
-              </TableRow>
-            ) : (
-              Object.entries(prices)
-                .filter(([crypto]) => allPairs.includes(crypto))
-                .sort(([, priceA], [, priceB]) => priceB - priceA) // Sort by price in descending order
-                .map(([crypto, price]) => {
-                  const displayCrypto = DISPLAY_MAPPING[crypto] || crypto;
-                  return (
-                    <TableRow 
-                      key={crypto}
-                      sx={{
-                        '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' },
-                        transition: 'background-color 0.2s'
-                      }}
+    );
+  };
+
+  const getSortedPairs = () => {
+    const pairs = [...allPairs];
+    
+    switch (sortType) {
+      case 'value':
+        return pairs.sort((a, b) => {
+          const priceA = prices[a] || 0;
+          const priceB = prices[b] || 0;
+          return sortDirection === 'asc' ? priceA - priceB : priceB - priceA;
+        });
+      case 'alpha':
+        return pairs.sort((a, b) => {
+          return sortDirection === 'asc' 
+            ? a.localeCompare(b) 
+            : b.localeCompare(a);
+        });
+      default:
+        return pairs;
+    }
+  };
+
+  const handleSort = (type) => {
+    if (sortType === type) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortType(type);
+      setSortDirection('asc');
+    }
+  };
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h6" component="h2">
+          Available Cryptocurrencies
+        </Typography>
+        <Box>
+          <ButtonGroup variant="outlined" size="small" sx={{ mr: 2 }}>
+            <Tooltip title="Sort by Value">
+              <Button 
+                onClick={() => handleSort('value')}
+                variant={sortType === 'value' ? 'contained' : 'outlined'}
+                startIcon={<SortIcon />}
+              >
+                Value {sortType === 'value' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </Button>
+            </Tooltip>
+            <Tooltip title="Sort Alphabetically">
+              <Button 
+                onClick={() => handleSort('alpha')}
+                variant={sortType === 'alpha' ? 'contained' : 'outlined'}
+                startIcon={<SortByAlphaIcon />}
+              >
+                A-Z {sortType === 'alpha' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </Button>
+            </Tooltip>
+          </ButtonGroup>
+          <Tooltip title="Add a new cryptocurrency pair to track">
+            <IconButton onClick={() => setAddPairDialogOpen(true)} color="primary">
+              <AddPairIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Cryptocurrency</TableCell>
+            <TableCell align="right">
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                Price (USD)
+                <Tooltip title="Prices are updated in real-time">
+                  <InfoIcon fontSize="small" color="action" />
+                </Tooltip>
+              </Box>
+            </TableCell>
+            <TableCell align="right">24h Change</TableCell>
+            <TableCell align="center">Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {getSortedPairs().map((pair) => (
+            <TableRow key={pair} sx={{ '&:hover': { backgroundColor: 'action.hover' } }}>
+              <TableCell>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {getCryptoIcon(pair)}
+                  <Box>
+                    <Typography variant="body1">
+                      {DISPLAY_MAPPING[pair] || pair}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {getCryptoFullName(pair)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </TableCell>
+              <TableCell align="right">
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <Fade in={updatingPrices[pair]} timeout={200}>
+                    <Box sx={{ position: 'absolute', mr: 2 }}>
+                      <CircularProgress size={16} />
+                    </Box>
+                  </Fade>
+                  <Typography>
+                    ${prices[pair]?.toFixed(2) || 'Loading...'}
+                  </Typography>
+                </Box>
+              </TableCell>
+              <TableCell align="right">
+                {renderPriceChange(pair)}
+              </TableCell>
+              <TableCell align="center">
+                <ButtonGroup variant="outlined" size="small">
+                  <Tooltip title="Buy this cryptocurrency">
+                    <Button
+                      onClick={() => handleTransactionClick(pair, 'buy')}
+                      startIcon={<AddIcon />}
+                      color="success"
                     >
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          {getCryptoIcon(displayCrypto)}
-                          <Box sx={{ ml: 1 }}>
-                            <Typography>{getCryptoFullName(displayCrypto)}</Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              {displayCrypto}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell align="right" sx={{
-                        backgroundColor: updatingPrices[crypto] ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                        transition: 'background-color 0.5s'
-                      }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                          <Typography sx={{ 
-                            fontFamily: 'monospace',
-                            color: realTimeData[crypto] ? 'success.main' : 'text.secondary'
-                          }}>
-                            ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </Typography>
-                          {!realTimeData[crypto] && (
-                            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                              (Demo)
-                            </Typography>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell align="center">
-                        <ButtonGroup size="small" variant="outlined">
-                          <Button 
-                            onClick={() => handleTransactionClick(crypto, 'buy')}
-                            color="primary"
-                            startIcon={<AddIcon />}
-                          >
-                            Buy
-                          </Button>
-                          <Button 
-                            onClick={() => handleTransactionClick(crypto, 'sell')}
-                            color="secondary"
-                            startIcon={<RemoveIcon />}
-                          >
-                            Sell
-                          </Button>
-                        </ButtonGroup>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-            )}
-          </TableBody>
-        </Table>
-      </Box>
+                      Buy
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Sell this cryptocurrency">
+                    <Button
+                      onClick={() => handleTransactionClick(pair, 'sell')}
+                      startIcon={<RemoveIcon />}
+                      color="error"
+                    >
+                      Sell
+                    </Button>
+                  </Tooltip>
+                </ButtonGroup>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       <Dialog 
         open={!!selectedCrypto} 
-        onClose={() => setSelectedCrypto(null)}
+        onClose={() => setSelectedCrypto('')}
         maxWidth="xs"
         fullWidth
       >
         <DialogTitle>
-          {transactionType === 'buy' ? 'Buy' : 'Sell'} {getCryptoFullName(selectedCrypto)}
+          {transactionType === 'buy' ? 'Buy' : 'Sell'} {selectedCrypto}
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Current Price: ${selectedCrypto && prices[selectedCrypto]?.toFixed(2)}
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Current Price: ${prices[selectedCrypto]?.toFixed(2) || 'Loading...'}
             </Typography>
             <TextField
-              autoFocus
-              margin="dense"
-              label={`Amount of ${selectedCrypto} to ${transactionType}`}
+              label="Amount"
               type="number"
               fullWidth
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              sx={{ mt: 1 }}
               InputProps={{
-                inputProps: { min: 0, step: "0.00000001" }
+                startAdornment: (
+                  <InputAdornment position="start">
+                    {getCryptoIcon(selectedCrypto)}
+                  </InputAdornment>
+                ),
               }}
+              helperText={
+                amount && prices[selectedCrypto] 
+                  ? `Total: $${(amount * prices[selectedCrypto]).toFixed(2)}`
+                  : 'Enter the amount you want to trade'
+              }
             />
-            {amount && selectedCrypto && (
-              <Typography variant="body2" sx={{ mt: 2 }}>
-                Total Cost: ${(amount * prices[selectedCrypto]).toFixed(2)}
-              </Typography>
-            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedCrypto(null)}>
-            Cancel
-          </Button>
+          <Button onClick={() => setSelectedCrypto('')}>Cancel</Button>
           <Button 
             onClick={handleTransactionSubmit}
             variant="contained"
-            color={transactionType === 'buy' ? 'primary' : 'secondary'}
+            color={transactionType === 'buy' ? 'success' : 'error'}
           >
-            Confirm {transactionType}
+            {transactionType === 'buy' ? 'Buy' : 'Sell'} {selectedCrypto}
           </Button>
         </DialogActions>
       </Dialog>
@@ -682,7 +744,7 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
         <Alert 
           onClose={() => setNotification({ ...notification, open: false })} 
           severity={notification.severity}
-          sx={{ width: '100%' }}
+          variant="filled"
         >
           {notification.message}
         </Alert>
