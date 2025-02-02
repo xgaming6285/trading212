@@ -36,27 +36,28 @@ import {
   SortByAlpha as SortByAlphaIcon
 } from '@mui/icons-material';
 
-// Define supported cryptocurrency pairs
+// Update the supported cryptocurrency pairs to match Kraken's available pairs
 const CRYPTO_PAIRS = [
-  'XBT/USD',
-  'ETH/USD',
-  'USDT/USD',
-  'BNB/USD',
-  'SOL/USD',
-  'XRP/USD',
-  'USDC/USD',
-  'ADA/USD',
-  'AVAX/USD',
-  'AAVE/GBP',
-  'AAVE/USD',
-  'ACA/USD',
-  'ALGO/USD',
-  'ADA/EUR'
-  // Add more cryptocurrencies as needed
+  'XBT/USD',  // Bitcoin
+  'ETH/USD',  // Ethereum
+  'USDT/USD', // Tether
+  'XRP/USD',  // Ripple
+  'SOL/USD',  // Solana
+  'ADA/USD',  // Cardano
+  'USDC/USD', // USD Coin
+  'DOT/USD',  // Polkadot
+  'AAVE/USD', // Aave
+  'ALGO/USD', // Algorand
+  'ATOM/USD', // Cosmos
+  'LINK/USD', // Chainlink
+  'LTC/USD',  // Litecoin
+  'MATIC/USD' // Polygon
 ];
 
 const DISPLAY_MAPPING = {
   'XBT/USD': 'BTC/USD',
+  'DOT/USD': 'DOT/USD',
+  'MATIC/USD': 'MATIC/USD',
   // Add other mappings if needed
 };
 
@@ -109,27 +110,36 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
         return <GenericCryptoIcon sx={{ ...iconStyle, color: '#627eea' }} />;
       case 'USDT':
         return <GenericCryptoIcon sx={{ ...iconStyle, color: '#26a17b' }} />;
-      case 'BNB':
-        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#f3ba2f' }} />;
-      case 'SOL':
-        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#00ff9d' }} />;
       case 'XRP':
         return <GenericCryptoIcon sx={{ ...iconStyle, color: '#23292f' }} />;
+      case 'SOL':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#00ff9d' }} />;
       case 'USDC':
         return <GenericCryptoIcon sx={{ ...iconStyle, color: '#2775ca' }} />;
       case 'ADA':
         return <GenericCryptoIcon sx={{ ...iconStyle, color: '#0033ad' }} />;
-      case 'AVAX':
-        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#e84142' }} />;
+      case 'DOT':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#e6007a' }} />;
+      case 'DOGE':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#ba9f33' }} />;
       case 'AAVE':
         return <GenericCryptoIcon sx={{ ...iconStyle, color: '#2ebac6' }} />;
+      case 'ALGO':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#000000' }} />;
+      case 'ATOM':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#2e3148' }} />;
+      case 'LINK':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#2a5ada' }} />;
+      case 'LTC':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#345d9d' }} />;
+      case 'MATIC':
+        return <GenericCryptoIcon sx={{ ...iconStyle, color: '#8247e5' }} />;
       default:
         return <GenericCryptoIcon sx={{ ...iconStyle, color: 'grey.500' }} />;
     }
   };
 
   const getCryptoFullName = (crypto) => {
-    // Extract the base currency from the pair (e.g., 'BTC/USD' -> 'BTC')
     const baseCurrency = crypto.split('/')[0];
     
     switch (baseCurrency) {
@@ -140,20 +150,30 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
         return 'Ethereum';
       case 'USDT':
         return 'Tether';
-      case 'BNB':
-        return 'Binance Coin';
-      case 'SOL':
-        return 'Solana';
       case 'XRP':
         return 'Ripple';
+      case 'SOL':
+        return 'Solana';
       case 'USDC':
         return 'USD Coin';
       case 'ADA':
         return 'Cardano';
-      case 'AVAX':
-        return 'Avalanche';
+      case 'DOT':
+        return 'Polkadot';
+      case 'DOGE':
+        return 'Dogecoin';
       case 'AAVE':
         return 'Aave';
+      case 'ALGO':
+        return 'Algorand';
+      case 'ATOM':
+        return 'Cosmos';
+      case 'LINK':
+        return 'Chainlink';
+      case 'LTC':
+        return 'Litecoin';
+      case 'MATIC':
+        return 'Polygon';
       default:
         return baseCurrency;
     }
@@ -161,15 +181,25 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
 
   // Update the WebSocket connection and message handling
   const connectWebSocket = useCallback(() => {
-    const ws = new WebSocket('wss://beta-ws.kraken.com');
-
+    const ws = new WebSocket('wss://ws.kraken.com');
+    let pingInterval;
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 5;
+    let isClosing = false; // Add flag to track intentional closes
     
+    const ping = () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ event: 'ping' }));
+      }
+    };
+
     const reconnect = () => {
+      if (isClosing) return; // Don't reconnect if closing intentionally
+      
       if (reconnectAttempts < maxReconnectAttempts) {
         reconnectAttempts++;
         console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+        clearInterval(pingInterval);
         setTimeout(() => {
           connectWebSocket();
         }, 5000 * reconnectAttempts);
@@ -182,10 +212,13 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
       console.log('Connected to Kraken WebSocket');
       reconnectAttempts = 0;
       
-      // Use the current value of allPairs from closure
+      // Start ping interval
+      pingInterval = setInterval(ping, 30000);
+      
+      // Subscribe to ticker for all pairs
       const subscribeMsg = {
         event: 'subscribe',
-        pair: [...CRYPTO_PAIRS, ...customPairs], 
+        pair: [...CRYPTO_PAIRS, ...customPairs],
         subscription: {
           name: 'ticker'
         }
@@ -199,6 +232,11 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
       const data = JSON.parse(event.data);
       console.log('Received WebSocket message:', data);
       
+      // Handle pong response
+      if (data.event === 'pong') {
+        return;
+      }
+      
       // Handle heartbeat
       if (data.event === 'heartbeat') {
         return;
@@ -206,7 +244,15 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
 
       // Handle subscription status
       if (data.event === 'subscriptionStatus') {
-        console.log('Subscription status:', data);
+        if (data.status === 'error') {
+          console.error('Subscription error:', data);
+          // Don't show errors for unsupported pairs in the UI
+          if (!data.errorMessage?.includes('Currency pair not supported')) {
+            setError(`Subscription error: ${data.errorMessage}`);
+          }
+        } else if (data.status === 'subscribed') {
+          console.log(`Successfully subscribed to ${data.pair}`);
+        }
         return;
       }
 
@@ -225,16 +271,11 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
               [krakenPair]: price
             }));
             
-            // Mark this price as real-time data
             setUpdatingPrices(prev => ({
               ...prev,
               [krakenPair]: true
             }));
             
-            setUpdatingPrices(prev => ({
-              ...prev,
-              [krakenPair]: true
-            }));
             setTimeout(() => {
               setUpdatingPrices(prev => ({
                 ...prev,
@@ -250,10 +291,12 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
       console.error('WebSocket error:', error);
       setError('Connection error occurred. Attempting to reconnect...');
       reconnect();
+
     };
 
     ws.onclose = (event) => {
       console.log('WebSocket closed:', event.code, event.reason);
+      clearInterval(pingInterval);
       
       if (event.code !== 1000) {
         setError('Connection closed unexpectedly. Attempting to reconnect...');
@@ -261,8 +304,15 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
       }
     };
 
-    return ws;
-  }, [customPairs, setPrices]); // Add setPrices to dependency array
+    // Return cleanup function
+    return () => {
+      isClosing = true; // Mark as intentionally closing
+      clearInterval(pingInterval);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, 'Component unmounting');
+      }
+    };
+  }, [customPairs, setPrices]);
 
   // Update the initial price fetching
   const fetchInitialPrices = useCallback(async () => {
@@ -351,7 +401,7 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
     } finally {
       setLoadingPairs(false);
     }
-  }, []);
+  }, [setNotification]);
 
   const handleAddPair = async () => {
     if (!searchInput) {
@@ -397,19 +447,20 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
     }
   };
 
-  // Modify the WebSocket subscription to include custom pairs
+  // Update the useEffect to handle cleanup properly
   useEffect(() => {
-    const ws = connectWebSocket();
+    const cleanup = connectWebSocket();
     return () => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close(1000, 'Component unmounting');
+      if (cleanup && typeof cleanup === 'function') {
+        cleanup();
       }
     };
   }, [connectWebSocket]);
 
   useEffect(() => {
     fetchInitialPrices();
-  }, [fetchInitialPrices]);
+    fetchAvailablePairs();
+  }, [fetchInitialPrices, fetchAvailablePairs]);
 
   // Add effect to clear custom pairs when account is reset
   useEffect(() => {
@@ -426,22 +477,20 @@ const CryptoList = ({ prices, setPrices, onTransaction, onReset }) => {
   }, [addPairDialogOpen, availablePairs.length, fetchAvailablePairs]);
 
   useEffect(() => {
-    Object.entries(prices).forEach(([pair, price]) => {
-      const prevPrice = previousPrices[pair];
-      if (prevPrice && price !== prevPrice) {
+    Object.entries(prices).forEach(([pair, currentPrice]) => {
+      const previousPrice = previousPrices[pair];
+      if (previousPrice && previousPrice !== currentPrice) {
+        const percentageChange = ((currentPrice - previousPrice) / previousPrice) * 100;
         setPriceChanges(prev => ({
           ...prev,
           [pair]: {
-            direction: price > prevPrice ? 'up' : 'down',
-            percentage: ((price - prevPrice) / prevPrice * 100).toFixed(2)
+            direction: currentPrice > previousPrice ? 'up' : 'down',
+            percentage: Math.abs(percentageChange).toFixed(2)
           }
         }));
       }
-      setPreviousPrices(prev => ({
-        ...prev,
-        [pair]: price
-      }));
     });
+    setPreviousPrices(prices);
   }, [prices, previousPrices]);
 
   const renderPriceChange = (pair) => {

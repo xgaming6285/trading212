@@ -25,4 +25,21 @@ export const getCryptoIcon = (symbol) => {
     // Add more mappings as needed
   };
   return icons[symbol] || '🪙';
+};
+
+// Add the missing functions that are being tested
+export const formatCurrency = (value) => {
+  const absValue = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  return `${sign}$${absValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+};
+
+export const calculateTotalValue = (holdings, prices) => {
+  return Object.entries(holdings).reduce((total, [crypto, amount]) => {
+    const price = prices[crypto];
+    if (price && !isNaN(amount)) {
+      return total + (amount * price);
+    }
+    return total;
+  }, 0);
 }; 

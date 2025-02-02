@@ -131,7 +131,11 @@ function App() {
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
-            <Typography variant="h3" component="h1" sx={{ fontWeight: 'bold', mb: 1 }}>
+            <Typography 
+              variant="h3" 
+              component="h3"
+              sx={{ fontWeight: 'bold', mb: 1 }}
+            >
               Crypto Trading Simulator
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
