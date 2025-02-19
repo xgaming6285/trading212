@@ -4,6 +4,7 @@ import CryptoList from './components/CryptoList';
 import AccountBalance from './components/AccountBalance';
 import TransactionHistory from './components/TransactionHistory';
 import ThemeSwitch from './components/ThemeSwitch';
+import axios from 'axios';
 import { 
   Container, 
   Grid, 
@@ -18,21 +19,60 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Divider
+  Divider,
+  Alert,
+  Snackbar
 } from '@mui/material';
 
-const INITIAL_BALANCE = 10000;
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const USER_ID = 'user123'; // In a real app, this would come from authentication
 
 function App() {
-  const [balance, setBalance] = useState(INITIAL_BALANCE);
+  const [balance, setBalance] = useState(0);
   const [holdings, setHoldings] = useState({});
   const [transactions, setTransactions] = useState([]);
   const [cryptoPrices, setCryptoPrices] = useState({});
-  const [resetTrigger, setResetTrigger] = useState(false);
   const [mode, setMode] = useState('light');
   const [showWelcome, setShowWelcome] = useState(() => {
     return !localStorage.getItem('welcomeShown');
   });
+  const [error, setError] = useState(null);
+
+  // Fetch portfolio data
+  const fetchPortfolio = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/portfolio/${USER_ID}`);
+      const portfolio = response.data;
+      setBalance(portfolio.balance);
+      
+      // Convert holdings array to object format
+      const holdingsObj = {};
+      portfolio.holdings.forEach(holding => {
+        holdingsObj[holding.cryptoId] = holding.amount;
+      });
+      setHoldings(holdingsObj);
+    } catch (err) {
+      setError('Failed to fetch portfolio data');
+      console.error('Error fetching portfolio:', err);
+    }
+  };
+
+  // Fetch transaction history
+  const fetchTransactions = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/transactions/${USER_ID}`);
+      setTransactions(response.data);
+    } catch (err) {
+      setError('Failed to fetch transactions');
+      console.error('Error fetching transactions:', err);
+    }
+  };
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchPortfolio();
+    fetchTransactions();
+  }, []);
 
   const theme = useMemo(
     () =>
@@ -52,78 +92,51 @@ function App() {
     setCryptoPrices(prices);
   }, []);
 
-  const handleTransaction = (type, crypto, amount, price) => {
-    const total = amount * price;
-    
-    if (type === 'buy') {
-      if (total > balance) {
-        alert('Insufficient funds! You need $' + total.toFixed(2) + ' but have $' + balance.toFixed(2));
-        return;
-      }
-      
-      setBalance(prevBalance => {
-        const newBalance = prevBalance - total;
-        return Number(newBalance.toFixed(2));
+  const handleTransaction = async (type, crypto, amount, price) => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/trade`, {
+        userId: USER_ID,
+        type,
+        cryptoId: crypto,
+        amount: Number(amount),
+        price: Number(price)
       });
-      
-      setHoldings(prev => ({
-        ...prev,
-        [crypto]: Number((prev[crypto] || 0) + amount)
-      }));
-    } else { // sell
-      const currentHolding = holdings[crypto] || 0;
-      if (!currentHolding) {
-        alert(`You don't own any ${crypto} to sell. Please buy some first.`);
-        return;
-      }
-      
-      if (currentHolding < amount) {
-        alert(`Insufficient ${crypto} holdings! You only have ${currentHolding} ${crypto}`);
-        return;
-      }
-      
-      setBalance(prevBalance => {
-        const newBalance = prevBalance + total;
-        return Number(newBalance.toFixed(2));
-      });
-      
-      const newAmount = Number(holdings[crypto] - amount);
-      setHoldings(prev => ({
-        ...prev,
-        [crypto]: newAmount
-      }));
 
-      if (newAmount === 0) {
-        setHoldings(prev => {
-          const newHoldings = { ...prev };
-          delete newHoldings[crypto];
-          return newHoldings;
-        });
-      }
+      // Update local state with the response data
+      const { portfolio, transaction } = response.data;
+      setBalance(portfolio.balance);
+      
+      // Convert holdings array to object format
+      const holdingsObj = {};
+      portfolio.holdings.forEach(holding => {
+        holdingsObj[holding.cryptoId] = holding.amount;
+      });
+      setHoldings(holdingsObj);
+
+      // Update transactions
+      setTransactions(prev => [transaction, ...prev]);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Transaction failed');
+      console.error('Error executing trade:', err);
     }
-
-    setTransactions(prev => [...prev, {
-      type,
-      crypto,
-      amount: Number(amount),
-      price: Number(price),
-      total: Number(total.toFixed(2)),
-      timestamp: new Date().toISOString()
-    }]);
   };
 
-  const handleReset = () => {
-    setBalance(INITIAL_BALANCE);
-    setHoldings({});
-    setTransactions([]);
-    setResetTrigger(prev => !prev);
-  };
-
-  useEffect(() => {
-    if (showWelcome) {
-      localStorage.setItem('welcomeShown', 'true');
+  const handleReset = async () => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/reset/${USER_ID}`);
+      
+      // Update local state with the response data
+      if (response.data.portfolio) {
+        setBalance(response.data.portfolio.balance);
+        setHoldings({});  // Clear holdings
+      }
+      setTransactions([]); // Clear transactions
+      setError(null);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to reset portfolio');
+      console.error('Error resetting portfolio:', err);
     }
-  }, [showWelcome]);
+  };
 
   return (
     <ThemeProvider theme={theme}>
@@ -162,7 +175,7 @@ function App() {
                 prices={cryptoPrices} 
                 setPrices={handleSetPrices}
                 onTransaction={handleTransaction}
-                onReset={resetTrigger}
+                holdings={holdings}
               />
             </Paper>
           </Grid>
@@ -188,7 +201,7 @@ function App() {
             </Typography>
             <Typography component="div" sx={{ mb: 2 }}>
               <ul>
-                <li>You start with ${INITIAL_BALANCE.toLocaleString()} in virtual money</li>
+                <li>You start with $10,000 in virtual money</li>
                 <li>View real-time cryptocurrency prices</li>
                 <li>Buy and sell various cryptocurrencies</li>
                 <li>Track your portfolio performance</li>
@@ -205,6 +218,16 @@ function App() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <Snackbar 
+          open={!!error} 
+          autoHideDuration={6000} 
+          onClose={() => setError(null)}
+        >
+          <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>
+            {error}
+          </Alert>
+        </Snackbar>
       </Container>
     </ThemeProvider>
   );

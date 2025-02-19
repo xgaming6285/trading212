@@ -11,7 +11,7 @@ const TransactionHistory = ({ transactions, currentPrices }) => {
   const calculateProfit = (transaction) => {
     if (transaction.type === 'sell') {
       const buyTransactions = transactions.filter(t => 
-        t.crypto === transaction.crypto && 
+        t.cryptoId === transaction.cryptoId && 
         t.type === 'buy' &&
         new Date(t.timestamp) < new Date(transaction.timestamp)
       );
@@ -19,14 +19,27 @@ const TransactionHistory = ({ transactions, currentPrices }) => {
       if (buyTransactions.length === 0) return 0;
       
       // Calculate average buy price
-      const totalBuyAmount = buyTransactions.reduce((sum, t) => sum + t.amount, 0);
+      const totalBuyAmount = buyTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
       const weightedBuyPrice = buyTransactions.reduce((sum, t) => 
-        sum + (t.price * t.amount), 0) / totalBuyAmount;
+        sum + ((t.price || 0) * (t.amount || 0)), 0) / totalBuyAmount;
       
-      return (transaction.price - weightedBuyPrice) * transaction.amount;
+      return ((transaction.price || 0) - weightedBuyPrice) * (transaction.amount || 0);
     }
     return 0;
   };
+
+  if (!transactions || transactions.length === 0) {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Transaction History
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          No transactions yet
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 2 }}>
@@ -36,16 +49,20 @@ const TransactionHistory = ({ transactions, currentPrices }) => {
       <List>
         {transactions.map((transaction, index) => {
           const profit = calculateProfit(transaction);
+          const price = transaction.price || 0;
+          const amount = transaction.amount || 0;
+          const total = transaction.total || 0;
+
           return (
-            <ListItem key={index} divider>
+            <ListItem key={transaction._id || index} divider>
               <ListItemText
-                primary={`${transaction.type.toUpperCase()} ${transaction.amount} ${transaction.crypto}`}
+                primary={`${transaction.type.toUpperCase()} ${amount.toFixed(8)} ${transaction.cryptoId}`}
                 secondary={
                   <>
                     <Typography component="span" variant="body2">
-                      Price: ${transaction.price.toFixed(2)}
+                      Price: ${price.toFixed(2)}
                       <br />
-                      Total: ${transaction.total.toFixed(2)}
+                      Total: ${total.toFixed(2)}
                       <br />
                       {transaction.type === 'sell' && (
                         <span style={{ color: profit >= 0 ? 'green' : 'red' }}>
