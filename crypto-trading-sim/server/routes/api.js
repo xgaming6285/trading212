@@ -8,27 +8,47 @@ const axios = require('axios');
 // This function fetches the current trading price of a cryptocurrency from the Kraken API
 // It takes a cryptoId parameter (e.g. 'BTCUSD') and returns the latest trade price as a float
 async function getKrakenPrice(cryptoId) {
+  if (!cryptoId) {
+    throw new Error('CryptoId is required');
+  }
+
   try {
     // Kraken uses BTC instead of XBT for Bitcoin, so we need to convert the symbol
-    const krakenPair = cryptoId.replace('XBT', 'BTC'); 
-    
+    const krakenPair = cryptoId.replace('XBT', 'BTC');
+
     // Make API request to Kraken's public ticker endpoint for the specified trading pair
     const response = await axios.get(`https://api.kraken.com/0/public/Ticker?pair=${krakenPair}`);
-    
+
     // Kraken returns errors as an array in the response, check and throw if present
     if (response.data.error && response.data.error.length > 0) {
       throw new Error(response.data.error[0]);
     }
 
+    if (!response.data || !response.data.result) {
+      throw new Error('Invalid response format from Kraken API');
+    }
+
     // Extract the price data from the nested response structure
     // result contains an object with the pair name as key, so we get the first key
     const result = response.data.result;
-    const pairData = result[Object.keys(result)[0]];
+    const pairKey = Object.keys(result)[0];
     
-    // c[0] contains the last trade price as a string, convert to float and return
-    return parseFloat(pairData.c[0]);
+    if (!pairKey || !result[pairKey] || !result[pairKey].c || !result[pairKey].c[0]) {
+      throw new Error('Price data not found in Kraken response');
+    }
+
+    const price = parseFloat(result[pairKey].c[0]);
+    if (isNaN(price)) {
+      throw new Error('Invalid price format received from Kraken');
+    }
+
+    return price;
   } catch (error) {
-    // Wrap any errors with context about which crypto failed
+    if (error.response) {
+      // Handle specific HTTP errors
+      throw new Error(`Kraken API error (${error.response.status}): ${error.response.data.error || error.message}`);
+    }
+    // Wrap any other errors with context about which crypto failed
     throw new Error(`Failed to fetch price for ${cryptoId}: ${error.message}`);
   }
 }
@@ -37,6 +57,10 @@ async function getKrakenPrice(cryptoId) {
 // This route handler retrieves a user's portfolio by their userId
 // If no portfolio exists for the user, it creates a new one with default values
 router.get('/portfolio/:userId', async (req, res) => {
+  if (!req.params.userId) {
+    return res.status(400).json({ message: 'UserId is required' });
+  }
+
   try {
     // Find the portfolio document matching the userId from the URL parameter
     const portfolio = await Portfolio.findOne({ userId: req.params.userId });
@@ -52,13 +76,19 @@ router.get('/portfolio/:userId', async (req, res) => {
     res.json(portfolio);
 
   } catch (error) {
+    // Log the error for debugging
+    console.error('Portfolio retrieval error:', error);
     // If any error occurs (e.g. database error), return 500 status with error message
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Failed to retrieve portfolio', error: error.message });
   }
 });
 
 // Get transaction history
 router.get('/transactions/:userId', async (req, res) => {
+  if (!req.params.userId) {
+    return res.status(400).json({ message: 'UserId is required' });
+  }
+
   try {
     // Find all transactions for the given user ID
     // Sort by timestamp in descending order (newest first)
@@ -68,14 +98,20 @@ router.get('/transactions/:userId', async (req, res) => {
     // If no transactions exist, this will return an empty array
     res.json(transactions);
   } catch (error) {
+    // Log the error for debugging
+    console.error('Transaction retrieval error:', error);
     // If there's an error (e.g. database connection issues)
     // Return a 500 status code with the error message
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Failed to retrieve transactions', error: error.message });
   }
 });
 
 // Reset portfolio
 router.post('/reset/:userId', async (req, res) => {
+  if (!req.params.userId) {
+    return res.status(400).json({ message: 'UserId is required' });
+  }
+
   try {
     // Delete all transactions for this user
     await Transaction.deleteMany({ userId: req.params.userId });
@@ -93,7 +129,9 @@ router.post('/reset/:userId', async (req, res) => {
     
     res.json({ message: 'Portfolio reset successfully', portfolio });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    // Log the error for debugging
+    console.error('Portfolio reset error:', error);
+    res.status(500).json({ message: 'Failed to reset portfolio', error: error.message });
   }
 });
 
@@ -106,7 +144,21 @@ router.post('/trade', async (req, res) => {
     
     // Validate required fields are present
     if (!userId || !type || !cryptoId || !amount) {
-      return res.status(400).json({ message: 'Missing required fields' });
+      return res.status(400).json({ 
+        message: 'Missing required fields',
+        required: ['userId', 'type', 'cryptoId', 'amount'],
+        received: { userId, type, cryptoId, amount }
+      });
+    }
+
+    // Validate trade type
+    if (!['buy', 'sell'].includes(type)) {
+      return res.status(400).json({ message: 'Invalid trade type. Must be "buy" or "sell"' });
+    }
+
+    // Validate amount is positive
+    if (amount <= 0) {
+      return res.status(400).json({ message: 'Amount must be greater than 0' });
     }
 
     // If price not provided, fetch real-time price from Kraken API
@@ -114,8 +166,10 @@ router.post('/trade', async (req, res) => {
       try {
         price = await getKrakenPrice(cryptoId);
       } catch (error) {
-        return res.status(400).json({ message: error.message });
+        return res.status(400).json({ message: 'Failed to get crypto price', error: error.message });
       }
+    } else if (price <= 0) {
+      return res.status(400).json({ message: 'Price must be greater than 0' });
     }
 
     // Find user's portfolio
@@ -129,7 +183,11 @@ router.post('/trade', async (req, res) => {
     if (type === 'buy') {
       // Check if user has enough funds for purchase
       if (portfolio.balance < totalCost) {
-        return res.status(400).json({ message: 'Insufficient funds' });
+        return res.status(400).json({ 
+          message: 'Insufficient funds',
+          required: totalCost,
+          available: portfolio.balance
+        });
       }
       
       // Deduct cost from balance
@@ -149,7 +207,11 @@ router.post('/trade', async (req, res) => {
       // Check if user has enough crypto to sell
       const holdingIndex = portfolio.holdings.findIndex(h => h.cryptoId === cryptoId);
       if (holdingIndex === -1 || portfolio.holdings[holdingIndex].amount < amount) {
-        return res.status(400).json({ message: 'Insufficient crypto balance' });
+        return res.status(400).json({ 
+          message: 'Insufficient crypto balance',
+          required: amount,
+          available: holdingIndex >= 0 ? portfolio.holdings[holdingIndex].amount : 0
+        });
       }
       
       // Add proceeds to balance
@@ -185,7 +247,9 @@ router.post('/trade', async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    // Log the error for debugging
+    console.error('Trade execution error:', error);
+    res.status(500).json({ message: 'Failed to execute trade', error: error.message });
   }
 });
 
