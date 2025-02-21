@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-const USER_ID = 'user123'; // In a real app, this would come from authentication
+const USER_ID = 'user123'; 
 
 function App() {
   const [balance, setBalance] = useState(0);
@@ -41,11 +41,15 @@ function App() {
   // Fetch portfolio data
   const fetchPortfolio = async () => {
     try {
+      // Get portfolio data for the current user from the API
       const response = await axios.get(`${API_BASE_URL}/portfolio/${USER_ID}`);
       const portfolio = response.data;
+      
+      // Update the balance state with the portfolio balance
       setBalance(portfolio.balance);
       
-      // Convert holdings array to object format
+      // Convert the holdings array from the API into an object format
+      // where the keys are crypto IDs and values are amounts held
       const holdingsObj = {};
       portfolio.holdings.forEach(holding => {
         holdingsObj[holding.cryptoId] = holding.amount;
@@ -57,7 +61,7 @@ function App() {
     }
   };
 
-  // Fetch transaction history
+  // Fetch transaction history for the current user
   const fetchTransactions = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/transactions/${USER_ID}`);
@@ -68,12 +72,13 @@ function App() {
     }
   };
 
-  // Initial data fetch
+  // Fetch initial portfolio and transaction data when component mounts
   useEffect(() => {
     fetchPortfolio();
-    fetchTransactions();
+    fetchTransactions(); 
   }, []);
 
+  // Create theme object based on current mode (light/dark)
   const theme = useMemo(
     () =>
       createTheme({
@@ -84,16 +89,20 @@ function App() {
     [mode],
   );
 
+  // Toggle between light and dark theme
   const toggleTheme = () => {
     setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
   };
 
+  // Update crypto prices when new data comes in
   const handleSetPrices = useCallback((prices) => {
     setCryptoPrices(prices);
   }, []);
 
+  // Handle buy/sell transactions
   const handleTransaction = async (type, crypto, amount, price) => {
     try {
+      // Send trade request to API
       const response = await axios.post(`${API_BASE_URL}/trade`, {
         userId: USER_ID,
         type,
@@ -102,18 +111,20 @@ function App() {
         price: Number(price)
       });
 
-      // Update local state with the response data
+      // Update local state with response data
       const { portfolio, transaction } = response.data;
+      
+      // Update balance
       setBalance(portfolio.balance);
       
-      // Convert holdings array to object format
+      // Convert holdings array to object and update holdings
       const holdingsObj = {};
       portfolio.holdings.forEach(holding => {
         holdingsObj[holding.cryptoId] = holding.amount;
       });
       setHoldings(holdingsObj);
 
-      // Update transactions
+      // Add new transaction to history
       setTransactions(prev => [transaction, ...prev]);
     } catch (err) {
       setError(err.response?.data?.message || 'Transaction failed');
@@ -121,16 +132,17 @@ function App() {
     }
   };
 
+  // Reset portfolio to initial state
   const handleReset = async () => {
     try {
       const response = await axios.post(`${API_BASE_URL}/reset/${USER_ID}`);
       
-      // Update local state with the response data
+      // Update state with reset portfolio data
       if (response.data.portfolio) {
         setBalance(response.data.portfolio.balance);
-        setHoldings({});  // Clear holdings
+        setHoldings({}); // Clear all holdings
       }
-      setTransactions([]); // Clear transactions
+      setTransactions([]); // Clear transaction history
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to reset portfolio');
