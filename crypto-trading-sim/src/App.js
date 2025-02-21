@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-const USER_ID = 'user123'; 
+const USER_ID = 'Elijah_Mikaelson'; 
 
 function App() {
   const [balance, setBalance] = useState(0);
